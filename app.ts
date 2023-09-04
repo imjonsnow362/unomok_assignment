@@ -1,73 +1,92 @@
 import * as fs from 'fs';
 
-// Function to process log data from a file
+function extractEndpoint(line: string): string {
+  // Extract the endpoint from the line
+  //This regex will capture one or more uppercase letters enclosed in double quotes,
+  //zero or more characters after a forward slash / that are not double quotes, 
+  //matches the literal string "HTTP"
+  const endpointRegex = /"([A-Z]+) (\/[^"]*) HTTP/;
+  const match = line.match(endpointRegex);
+  return match ? match[2] : '';
+}
+
+function extractMinute(timestamp: string): string {
+  // Extract the minute from the timestamp
+  //this line extracts the first 16 characters from the
+  const minute = timestamp.substring(0, 16);
+  return minute;
+}
+
+function extractStatusCode(line: string): string {
+  // Extract the status code from the line
+  //matches the literal string "HTTP" followed by a forward slash, a digit, a dot, and another digit, followed by a double quote.
+  //captures exactly three consecutive digits, representing the status code of the HTTP response.
+  const statusCodeRegex = /HTTP\/\d\.\d" (\d{3})/;
+  const match = line.match(statusCodeRegex);
+  return match ? match[1] : '';
+}
+
 function processLogFile(filePath: string) {
   // Read the data from the file
   const data = fs.readFileSync(filePath, 'utf-8');
 
-  // Initialize variables to store insights for this log file
-  const endpointCounts: { [key: string]: number } = {};
-  const perMinuteCounts: { [key: string]: number } = {};
-  const statusCounts: { [key: string]: number } = {};
-
   // Split the data into lines
   const lines = data.split('\n');
 
-  // Process each line of the log data
-  lines.forEach((line) => {
-    // Split the line into parts
-    const parts = line.split(' ');
+  // Initialize variables to store insights for this log file
+  //The endpointCounts object is used to keep track of the number of times each endpoint is called.
+  const endpointCounts: { [endpoint: string]: number } = {};
+  //The statusCodeCounts object is used to store the count of each HTTP status code returned by the API.
+  const statusCodeCounts: { [statusCode: string]: number } = {};
+  //The apiCallsPerMinute object is used to track the number of API calls made per minute.
+  const apiCallsPerMinute: { [minute: string]: number } = {};
 
-    // Extract the timestamp and endpoint/status code
-    const timestamp = parts.slice(0, 2).join(' ');
-    const info = parts.slice(2).join(' ');
+  // Process each line of the log file
+  for (const line of lines) {
+    //checks if the current line includes the string "HTTP/1.1" or "Running webapp API"
+    if (line.includes('HTTP/1.1"') || line.includes('Running webapp API')) {
+      const endpoint = extractEndpoint(line);
+      endpointCounts[endpoint] = (endpointCounts[endpoint] || 0) + 1;
 
-    // Count endpoint calls
-    if (info.includes('Running webapp API')) {
-      const endpointMatch = info.match(/Port (\d+)/);
-      if (endpointMatch) {
-        const endpoint = endpointMatch[1];
-        if (endpointCounts[endpoint]) {
-          endpointCounts[endpoint]++;
-        } else {
-          endpointCounts[endpoint] = 1;
-        }
-      }
+      //extracts a status code from the log file entries 
+      const statusCode = extractStatusCode(line);
+      statusCodeCounts[statusCode] = (statusCodeCounts[statusCode] || 0) + 1;
+
+      //substring method is used to extract timestamp and then passed as argument to the function
+      const timestamp = line.substring(0, 16);
+      apiCallsPerMinute[timestamp] = (apiCallsPerMinute[timestamp] || 0) + 1;
     }
+  }
 
-    // Count per minute API calls
-    const minute = timestamp.split(':')[0];
-    if (perMinuteCounts[minute]) {
-      perMinuteCounts[minute]++;
-    } else {
-      perMinuteCounts[minute] = 1;
-    }
+  //Finally printing all the values in console 
 
-    // Count API calls by HTTP status code
-    const statusCodeMatch = info.match(/\[3(\d+)m/);
-    if (statusCodeMatch) {
-      const statusCode = statusCodeMatch[1];
-      if (statusCounts[statusCode]) {
-        statusCounts[statusCode]++;
-      } else {
-        statusCounts[statusCode] = 1;
-      }
-    }
-  });
+  //Display the status code counts
+  console.log('API Call Counts for each HTTP Status Code:');
+  //console.log(statusCodeCounts);
+  const statusCodeTable = Object.entries(statusCodeCounts).map(([statusCode, count]) => ({
+    statusCode,
+    count,
+  }));
+  console.table(statusCodeTable, ['statusCode', 'count']);
 
-  // Display the insights for this log file in a formatted table
-  console.log(`Insights for ${filePath}:`);
-  console.log('Endpoint Calls:');
-  console.table(endpointCounts);
+  console.log('API Calls per Minute:');
+  const apiCallsPerMinuteTable = Object.entries(apiCallsPerMinute).map(([minute, count]) => ({
+    minute,
+    count,
+  }));
+  console.table(apiCallsPerMinuteTable, ['minute', 'count']);
 
-  console.log('\nAPI Calls per Minute:');
-  console.table(perMinuteCounts);
-
-  console.log('\nAPI Calls by HTTP Status Code:');
-  console.table(statusCounts);
+  // Display the endpoint counts
+  console.log('API Call Counts by Endpoint:');
+  console.log(endpointCounts);
+  const apiCallsTable = Object.entries(statusCodeCounts).map(([endpoint, count]) => ({
+    endpoint,
+    count,
+  }));
+  console.table(apiCallsTable, ['endpoint', 'count']);
+  //console.table(Object.values(endpointCounts));
 }
 
-// Process each log file
 const logFiles: string[] = ['data.txt', 'data2.txt', 'data3.txt'];
 logFiles.forEach((filePath) => {
   processLogFile(filePath);
